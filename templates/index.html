@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
+
+    <title>AI Assistant</title>
+
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='style.css') }}">
+
+    <!-- Markdown -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+    <!-- Highlight.js -->
+    <link rel="stylesheet"
+          href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+</head>
+
+<body>
+
+<div class="app-layout">
+
+    <!-- SIDEBAR -->
+
+    <div class="sidebar">
+
+        <h2>💬 Chats</h2>
+
+        <button onclick="newChat()">
+            + New Chat
+        </button>
+
+        <div id="chat-history">
+
+        </div>
+
+    </div>
+
+    <!-- MAIN CHAT -->
+
+    <div class="container">
+
+        <div class="header">
+
+            <div>
+                🤖 AI Assistant
+
+                <div class="status">
+                    🟢 Online
+                </div>
+            </div>
+
+            <div>
+
+                <button class="top-btn"
+                        onclick="toggleDarkMode()">
+                    🌙
+                </button>
+
+                <button class="top-btn"
+                        onclick="clearCurrentChat()">
+                    Clear
+                </button>
+
+            </div>
+
+        </div>
+
+        <div id="chatbox"></div>
+
+        <div class="input-area">
+
+            <input
+                type="text"
+                id="message"
+                placeholder="Ask anything..."
+                autocomplete="off">
+
+            <button onclick="sendMessage()">
+                Send
+            </button>
+
+        </div>
+
+    </div>
+
+</div>
+
+<script>
+
+let conversations = [];
+let currentChat = [];
+
+/* ==========================
+   ENTER KEY
+========================== */
+
+document
+.getElementById("message")
+.addEventListener("keypress", function(event){
+
+    if(event.key === "Enter"){
+        sendMessage();
+    }
+
+});
+
+/* ==========================
+   DARK MODE
+========================== */
+
+function toggleDarkMode(){
+
+    document.body.classList.toggle(
+        "dark-mode"
+    );
+
+}
+
+/* ==========================
+   NEW CHAT
+========================== */
+
+function newChat(){
+
+    if(currentChat.length > 0){
+
+        conversations.push(
+            [...currentChat]
+        );
+
+        updateSidebar();
+    }
+
+    currentChat = [];
+
+    document.getElementById(
+        "chatbox"
+    ).innerHTML = "";
+
+    fetch("/clear",{
+        method:"POST"
+    });
+    updateSidebar();
+
+}
+
+/* ==========================
+   CLEAR CHAT
+========================== */
+
+function clearCurrentChat(){
+
+    currentChat = [];
+
+    document.getElementById(
+        "chatbox"
+    ).innerHTML = "";
+
+    fetch("/clear",{
+        method:"POST"
+    });
+
+}
+
+/* ==========================
+   UPDATE SIDEBAR
+========================== */
+
+async function updateSidebar() {
+
+    const history =
+        document.getElementById(
+            "chat-history"
+        );
+
+    history.innerHTML = "";
+
+    const response =
+        await fetch("/get_chats");
+
+    const chats =
+        await response.json();
+
+    chats.forEach(chat => {
+
+        const chatId = chat[0];
+        const title = chat[1];
+
+        const div =
+            document.createElement(
+                "div"
+            );
+
+        div.className =
+            "chat-item";
+
+        div.innerHTML =
+            title;
+
+        div.onclick = () =>
+            loadChat(chatId);
+
+        history.appendChild(div);
+
+    });
+
+}
+
+async function loadChat(chatId) {
+
+    const response =
+        await fetch(
+            `/load_chat/${chatId}`
+        );
+
+    const messages =
+        await response.json();
+
+    const chatbox =
+        document.getElementById(
+            "chatbox"
+        );
+
+    chatbox.innerHTML = "";
+
+    messages.forEach(msg => {
+
+        const container =
+            document.createElement(
+                "div"
+            );
+
+        if(msg.role === "user") {
+
+            container.className =
+                "user-container";
+
+            container.innerHTML = `
+                <div class="user-message">
+                    ${msg.content}
+                </div>
+
+                <div class="avatar">
+                    👤
+                </div>
+            `;
+
+        } else {
+
+            container.className =
+                "bot-container";
+
+            container.innerHTML = `
+                <div class="avatar">
+                    🤖
+                </div>
+
+                <div class="bot-message">
+                    ${marked.parse(msg.content)}
+                </div>
+            `;
+        }
+
+        chatbox.appendChild(
+            container
+        );
+    });
+
+    chatbox.scrollTop =
+        chatbox.scrollHeight;
+
+    hljs.highlightAll();
+}
+
+/* ==========================
+   SEND MESSAGE
+========================== */
+
+async function sendMessage(){
+
+    const input =
+        document.getElementById(
+            "message"
+        );
+
+    const message =
+        input.value.trim();
+
+    if(message === ""){
+        return;
+    }
+
+    const chatbox =
+        document.getElementById(
+            "chatbox"
+        );
+
+    /* USER MESSAGE */
+
+    const userContainer =
+        document.createElement(
+            "div"
+        );
+
+    userContainer.className =
+        "user-container";
+
+    userContainer.innerHTML = `
+        <div class="user-message">
+            ${message}
+        </div>
+
+        <div class="avatar">
+            👤
+        </div>
+    `;
+
+    chatbox.appendChild(
+        userContainer
+    );
+
+    currentChat.push({
+        sender:"user",
+        text:message
+    });
+
+    input.value = "";
+
+    chatbox.scrollTop =
+        chatbox.scrollHeight;
+
+    /* TYPING INDICATOR */
+
+    const typingContainer =
+        document.createElement(
+            "div"
+        );
+
+    typingContainer.className =
+        "bot-container";
+
+    typingContainer.innerHTML = `
+        <div class="avatar">
+            🤖
+        </div>
+
+        <div class="bot-message">
+
+            <div class="typing-dots">
+
+                <span></span>
+                <span></span>
+                <span></span>
+
+            </div>
+
+        </div>
+    `;
+
+    chatbox.appendChild(
+        typingContainer
+    );
+
+    chatbox.scrollTop =
+        chatbox.scrollHeight;
+
+    try{
+
+        const response =
+            await fetch("/chat",{
+
+                method:"POST",
+
+                headers:{
+                    "Content-Type":
+                    "application/json"
+                },
+
+                body:JSON.stringify({
+                    message:message
+                })
+
+            });
+
+        const data =
+            await response.json();
+
+        typingContainer.remove();
+
+        const botContainer =
+            document.createElement(
+                "div"
+            );
+
+        botContainer.className =
+            "bot-container";
+
+        botContainer.innerHTML = `
+            <div class="avatar">
+                🤖
+            </div>
+
+            <div class="bot-message">
+            </div>
+        `;
+
+        chatbox.appendChild(
+            botContainer
+        );
+
+        const botMessage =
+            botContainer.querySelector(
+                ".bot-message"
+            );
+
+        const text =
+            data.reply ||
+            "No response received.";
+
+        let i = 0;
+
+        const interval =
+            setInterval(()=>{
+
+                if(i <= text.length){
+
+                    let partial =
+                        text.substring(
+                            0,
+                            i
+                        );
+
+                    botMessage.innerHTML =
+                        marked.parse(
+                            partial
+                        );
+
+                    hljs.highlightAll();
+
+                    chatbox.scrollTop =
+                        chatbox.scrollHeight;
+
+                    i++;
+
+                }
+                else{
+
+                    clearInterval(
+                        interval
+                    );
+
+                }
+
+            },10);
+
+        currentChat.push({
+            sender:"bot",
+            text:text
+        });
+
+    }
+
+    catch(error){
+
+        typingContainer.remove();
+
+        const errorDiv =
+            document.createElement(
+                "div"
+            );
+
+        errorDiv.className =
+            "bot-container";
+
+        errorDiv.innerHTML = `
+            <div class="avatar">
+                🤖
+            </div>
+
+            <div class="bot-message">
+                Error connecting to server.
+            </div>
+        `;
+
+        chatbox.appendChild(
+            errorDiv
+        );
+    }
+
+    chatbox.scrollTop =
+        chatbox.scrollHeight;
+}
+window.onload = function() {
+    updateSidebar();
+};
+</script>
+
+</body>
+</html>
